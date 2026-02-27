@@ -6,6 +6,8 @@ const db = require('../src/database');
 const { checkAutoReply } = require('../src/autoreply');
 
 const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB) || 20;
+const TG_GROUP_ID = process.env.TG_GROUP_ID;
+const TG_TOPIC_ID = process.env.TG_TOPIC_ID;
 
 // 配置文件上传
 const storage = multer.diskStorage({
@@ -33,7 +35,16 @@ module.exports = ({ bot, sessionMap }) => {
   // 创建新会话
   router.post('/session', (req, res) => {
     try {
-      const session = db.createSession();
+      const { tgChatId, topicId } = req.body;
+      const session = db.createSession(tgChatId, topicId);
+      
+      // 如果提供了 TG 信息，立即绑定
+      if (tgChatId) {
+        const sessionKey = topicId ? `tg_${tgChatId}_${topicId}` : `tg_${tgChatId}`;
+        sessionMap.set(sessionKey, session.id);
+        console.log(`🔗 会话绑定：${session.id} <-> TG:${tgChatId}${topicId ? `(话题:${topicId})` : ''}`);
+      }
+      
       res.json({ success: true, sessionId: session.id });
     } catch (error) {
       console.error('创建会话失败:', error);
@@ -49,7 +60,6 @@ module.exports = ({ bot, sessionMap }) => {
         return res.status(404).json({ success: false, error: '会话不存在' });
       }
       
-      // 检查是否过期
       const now = Math.floor(Date.now() / 1000);
       if (session.expires_at < now) {
         return res.status(410).json({ success: false, error: '会话已过期' });
@@ -93,7 +103,6 @@ module.exports = ({ bot, sessionMap }) => {
         return res.status(404).json({ success: false, error: '会话不存在' });
       }
       
-      // 检查是否过期
       const now = Math.floor(Date.now() / 1000);
       if (session.expires_at < now) {
         return res.status(410).json({ success: false, error: '会话已过期' });
@@ -109,23 +118,23 @@ module.exports = ({ bot, sessionMap }) => {
       
       // 如果有 TG 绑定，转发给客服
       if (session.tg_chat_id) {
-        bot.sendMessage(session.tg_chat_id, content)
-          .then(() => console.log(`📤 消息已转发给客服 ${session.tg_chat_id}`))
+        const sendOptions = {};
+        if (session.topic_id) sendOptions.message_thread_id = session.topic_id;
+        
+        bot.sendMessage(session.tg_chat_id, content, sendOptions)
+          .then(() => console.log(`📤 消息已转发给客服 ${session.tg_chat_id}${session.topic_id ? `(话题:${session.topic_id})` : ''}`))
           .catch(err => console.error('转发消息失败:', err));
       } else {
         // 新对话，检查自动回复
         const autoReply = checkAutoReply(content);
         if (autoReply) {
-          // 延迟回复，模拟真人
           setTimeout(() => {
             db.saveMessage({ sessionId, from: 'agent', type: 'text', content: autoReply });
           }, 1000);
         }
       }
       
-      // 更新会话时间
       db.touchSession(sessionId);
-      
       res.json({ success: true });
     } catch (error) {
       console.error('发送消息失败:', error);
@@ -150,7 +159,6 @@ module.exports = ({ bot, sessionMap }) => {
       
       const fileUrl = `/uploads/${req.file.filename}`;
       
-      // 保存消息
       db.saveMessage({
         sessionId,
         from: 'user',
@@ -161,7 +169,10 @@ module.exports = ({ bot, sessionMap }) => {
       
       // 转发给客服
       if (session.tg_chat_id) {
-        bot.sendPhoto(session.tg_chat_id, req.file.path, { caption })
+        const sendOptions = {};
+        if (session.topic_id) sendOptions.message_thread_id = session.topic_id;
+        
+        bot.sendPhoto(session.tg_chat_id, req.file.path, { caption, ...sendOptions })
           .then(() => console.log(`📤 图片已转发给客服 ${session.tg_chat_id}`))
           .catch(err => console.error('转发图片失败:', err));
       }
@@ -191,7 +202,6 @@ module.exports = ({ bot, sessionMap }) => {
       
       const fileUrl = `/uploads/${req.file.filename}`;
       
-      // 保存消息
       db.saveMessage({
         sessionId,
         from: 'user',
@@ -202,7 +212,10 @@ module.exports = ({ bot, sessionMap }) => {
       
       // 转发给客服
       if (session.tg_chat_id) {
-        bot.sendVideo(session.tg_chat_id, req.file.path, { caption })
+        const sendOptions = {};
+        if (session.topic_id) sendOptions.message_thread_id = session.topic_id;
+        
+        bot.sendVideo(session.tg_chat_id, req.file.path, { caption, ...sendOptions })
           .then(() => console.log(`📤 视频已转发给客服 ${session.tg_chat_id}`))
           .catch(err => console.error('转发视频失败:', err));
       }
@@ -215,11 +228,11 @@ module.exports = ({ bot, sessionMap }) => {
     }
   });
 
-  // 绑定 TG 会话（客服首次回复时调用）
+  // 绑定 TG 会话（支持话题模式）
   router.post('/bind/:sessionId', (req, res) => {
     try {
       const { sessionId } = req.params;
-      const { tgChatId } = req.body;
+      const { tgChatId, topicId } = req.body;
       
       if (!tgChatId) {
         return res.status(400).json({ success: false, error: '缺少 tgChatId' });
@@ -230,10 +243,12 @@ module.exports = ({ bot, sessionMap }) => {
         return res.status(404).json({ success: false, error: '会话不存在' });
       }
       
-      db.bindSessionToTg(sessionId, tgChatId);
-      sessionMap.set(`tg_${tgChatId}`, sessionId);
+      db.bindSessionToTg(sessionId, tgChatId, topicId);
       
-      console.log(`🔗 会话绑定：${sessionId} <-> TG:${tgChatId}`);
+      const sessionKey = topicId ? `tg_${tgChatId}_${topicId}` : `tg_${tgChatId}`;
+      sessionMap.set(sessionKey, sessionId);
+      
+      console.log(`🔗 会话绑定：${sessionId} <-> TG:${tgChatId}${topicId ? `(话题:${topicId})` : ''}`);
       res.json({ success: true });
     } catch (error) {
       console.error('绑定会话失败:', error);
