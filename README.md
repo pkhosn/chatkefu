@@ -49,11 +49,22 @@ const autoReplyRules = [
 ];
 ```
 
+## 本地测试
+
+```bash
+cd backend
+npm install
+cp .env.example .env
+# 编辑 .env 填入 TG_BOT_TOKEN
+npm start
+# 访问 http://localhost:3000
+```
+
 ## 技术栈
 
-- **前端**: Vue 3 + Vite
+- **前端**: 原生 JavaScript (轻量级)
 - **后端**: Node.js + Express
-- **数据库**: SQLite
+- **数据库**: SQLite (sql.js)
 - **TG Bot**: node-telegram-bot-api
 - **部署**: Docker + Docker Compose
 
@@ -61,16 +72,33 @@ const autoReplyRules = [
 
 ```
 chatkefu/
-├── frontend/          # 前端代码
-│   └── src/
+├── frontend/          # 前端源码（参考）
 ├── backend/           # 后端代码
+│   ├── public/        # 静态网页
 │   ├── src/
+│   │   ├── server.js      # 主服务器
+│   │   ├── database.js    # 数据库操作
+│   │   └── autoreply.js   # 自动回复配置
 │   ├── routes/
-│   └── storage/
-├── docker/            # Docker 配置
+│   │   └── api.js         # API 路由
+│   ├── storage/           # 数据库和上传文件
+│   ├── Dockerfile
+│   └── package.json
 ├── docker-compose.yml
+├── .env.example
 └── README.md
 ```
+
+## API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/session` | 创建新会话 |
+| GET | `/api/session/:id` | 获取会话信息 |
+| GET | `/api/messages/:id` | 获取消息历史 |
+| POST | `/api/message/:id` | 发送文字消息 |
+| POST | `/api/message/:id/image` | 发送图片 |
+| POST | `/api/message/:id/video` | 发送视频 |
 
 ## License
 

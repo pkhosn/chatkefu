@@ -2,9 +2,6 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# 安装构建依赖（用于 better-sqlite3）
-RUN apk add --no-cache python3 make g++
-
 # 复制 package.json
 COPY package.json ./
 
@@ -14,8 +11,8 @@ RUN npm install --production
 # 复制源代码
 COPY . .
 
-# 创建存储目录
-RUN mkdir -p storage/uploads
+# 创建存储和公开目录
+RUN mkdir -p storage/uploads public
 
 # 暴露端口
 EXPOSE 3000
