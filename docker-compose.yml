@@ -11,6 +11,8 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - TG_GROUP_ID=${TG_GROUP_ID:-}
+      - TG_TOPIC_ID=${TG_TOPIC_ID:-}
       - PORT=3000
       - SESSION_EXPIRY_DAYS=${SESSION_EXPIRY_DAYS:-7}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-20}
